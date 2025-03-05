@@ -10,3 +10,13 @@ class SimplifiedThreePL:
         self.experiment=experiment
 
     def summary(self):
+        n_correct=sum(sdt.hits for sdt, _ in self.experiment.conditions)
+        n_incorrect=sum(sdt.misses + sdt.false_alarms for sdt, _ in self.experiment.conditions)
+        return {
+            "n_total": n_correct+n_incorrect,
+            "n_correct": n_correct,
+            "n_incorrect": n_incorrect,
+            "n_conditions": len(self.experiment.conditions)
+        }
+    
+    def predict(self):
