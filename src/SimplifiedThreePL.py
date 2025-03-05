@@ -1,4 +1,6 @@
 import numpy as np
+import scipy.optimize as optim
+from scipy.special import expit #gpt suggestion
 import src.Experiment as experiment
 
 class SimplifiedThreePL:
@@ -12,6 +14,7 @@ class SimplifiedThreePL:
         self._logit_base_rate=None
         self._discrimination=None
         self._is_fitted=False
+        self._difficulties = np.array([2, 1, 0, -1, -2])
 
     def summary(self):
         n_correct=sum(sdt.hits for sdt, _ in self.experiment.conditions)
@@ -24,3 +27,10 @@ class SimplifiedThreePL:
         }
     
     def predict(self, parameters):
+        a, q=parameters #gpt suggestion
+        c=expit(q) 
+        difficulties=self._difficulties
+        exponent=a*(0-difficulties)
+        probability_correct=c + (1 - c) * (1 / (1 + np.exp(-exponent)))
+        return probability_correct
+
