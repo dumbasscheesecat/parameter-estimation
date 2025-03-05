@@ -12,7 +12,7 @@ class Experiment:
         if not isinstance(sdt_obj, SignalDetection):
             raise TypeError("sdt_obj must be an instance of SignalDetection")
         self.conditions.append((sdt_obj, label)) 
-
+        
     def sorted_roc_points(self):
         if not self.conditions:
             raise ValueError("No conditions added to the experiment")

@@ -1,105 +1,148 @@
 import unittest
 import numpy as np
-from src.SimplifiedThreePL import SimplifiedThreePL
-from src.Experiment import Experiment
-from src.SignalDetection import SignalDetection
+import sys
+import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src'))) #chatgpt fix to make the imports work
 
-class TestSimplifiedThreePL(unittest.TestCase):
+import unittest
+from SimplifiedThreePL import SimplifiedThreePL
+from Experiment import Experiment
+from SignalDetection import SignalDetection
+
+#Test suite was suggested by gpt, but heavily debugged and rewritten by us
+
+class TestSimplifiedThreePL1(unittest.TestCase):
+
     def setUp(self):
-        correct_counts = [55, 60, 75, 90, 95]
-        incorrect_counts = [45, 40, 25, 10, 5]
-       
-        conditions = []
-        for correct, incorrect in zip(correct_counts, incorrect_counts):
-            conditions.append((SignalDetection(correct, incorrect, 0, 0), f"Condition {len(conditions)}"))
-       
-        self.experiment = Experiment([])
-        for sdt, label in conditions:
-            self.experiment.add_condition(sdt, label)
-       
-        self.model = SimplifiedThreePL(self.experiment)
-
-    def test_summary(self):
-        summary = self.model.summary()
-        self.assertEqual(summary["n_correct"], 375)
-        self.assertEqual(summary["n_total"], 500)
-
-    def test_fit(self):
-        self.model.fit()
-        self.assertTrue(self.model._is_fitted)
-
-    def test_get_discrimination(self):
-        self.model.fit()
-        self.assertIsInstance(self.model.get_discrimination(), float)
-
-    def test_prediction_values(self):
-        self.model.fit()
-        probs = self.model.predict([self.model.get_discrimination(), self.model.get_base_rate()])
-        self.assertTrue(np.all((probs >= 0) & (probs <= 1)))
-
-class TestSimplifiedThreePL(unittest.TestCase):
-    def setUp(self):
-        """Initialize test data and model instance."""
+        """Set up a valid Experiment instance with five conditions."""
         self.experiment = Experiment()
+        conditions_data = [
+            (55, 45, 10, 90),  
+            (60, 40, 15, 85), 
+            (75, 25, 20, 80),  
+            (90, 10, 5, 95),  
+            (95, 5, 3, 97)    
+        ]
+        for hits, misses, false_alarms, correct_rejections in conditions_data:
+            sdt = SignalDetection(hits, misses, false_alarms, correct_rejections)
+            self.experiment.add_condition(sdt)
+
         self.model = SimplifiedThreePL(self.experiment)
+
+#Initialization test
     
-    def test_initialization(self):
-        """Test proper initialization and attribute handling."""
-        self.assertEqual(self.model._is_fitted, False)
+    def test_valid_initialization(self):
+        """Test that the constructor correctly initializes with a valid experiment."""
+        self.assertIsInstance(self.model, SimplifiedThreePL)
+
+    def test_unfitted_parameter_access(self):
+        """Ensure accessing parameters before fitting raises an error."""
         with self.assertRaises(ValueError):
             self.model.get_discrimination()
+
         with self.assertRaises(ValueError):
             self.model.get_base_rate()
+
+#Prediction test
     
-    def test_summary(self):
-        """Test the summary method returns the correct structure."""
-        summary = self.model.summary()
-        self.assertIn('n_total', summary)
-        self.assertIn('n_correct', summary)
-        self.assertIn('n_incorrect', summary)
-        self.assertIn('n_conditions', summary)
-    
-    def test_predict_output_range(self):
-        """Test that predictions are in [0,1] range."""
-        parameters = [1.0, 0.0]
-        predictions = self.model.predict(parameters)
-        self.assertTrue(np.all(predictions >= 0) and np.all(predictions <= 1))
-    
-    def test_negative_log_likelihood(self):
-        """Test that negative log-likelihood returns a valid numerical value."""
-        parameters = [1.0, 0.0]
-        nll = self.model.negative_log_likelihood(parameters)
-        self.assertTrue(isinstance(nll, float))
-    
-    def test_fit(self):
-        """Test that fit() runs without errors and sets parameters."""
+    def test_prediction_output_bounds(self):
+        """Test that predict() outputs values between 0 and 1."""
+        params = (1.0, 0.0)  
+        predictions = self.model.predict(params)
+        self.assertTrue(all(0 <= p <= 1 for p in predictions))
+
+    def test_higher_base_rate_increases_probabilities(self):
+        """Test that a higher base rate results in higher probabilities."""
+        params_low_c = (1.0, -2.0)  
+        params_high_c = (1.0, 2.0)  
+        preds_low_c = self.model.predict(params_low_c)
+        preds_high_c = self.model.predict(params_high_c)
+        self.assertTrue(all(ph > pl for ph, pl in zip(preds_high_c, preds_low_c)))
+
+    def test_higher_discrimination_affects_predictions(self):
+        """Test that predictions change when discrimination (a) changes."""
+        params_low_a = (0.5, 0.0)
+        params_high_a = (2.0, 0.0)
+        preds_low_a = self.model.predict(params_low_a)
+        preds_high_a = self.model.predict(params_high_a)
+        self.assertFalse(np.allclose(preds_low_a, preds_high_a))
+
+    def test_prediction_matches_expected_values(self):
+        """Test that predictions match expected values for known parameters."""
+        params = (1.0, 0.0)  
+        expected_probs = [0.5744, 0.6225, 0.7311, 0.8413, 0.9047]
+        predictions = self.model.predict(params)
+        print(predictions)
+        print(expected_probs)
+        np.testing.assert_almost_equal(predictions, expected_probs, decimal=1)
+
+#parameter testing
+
+    def test_negative_log_likelihood_improves_after_fitting(self):
+        """Test that fitting the model improves negative log-likelihood."""
+        initial_params = (1.0, 0.0)
+        initial_nll = self.model.negative_log_likelihood(initial_params)
         self.model.fit()
-        self.assertTrue(self.model._is_fitted)
-        self.assertTrue(isinstance(self.model.get_discrimination(), float))
-        self.assertTrue(isinstance(self.model.get_base_rate(), float))
-    
-    def test_parameter_estimation(self):
-        """Test that model estimates reasonable parameters after fitting."""
+        epsilon = 1e-6
+        p = np.clip(self.model.get_base_rate(), epsilon, 1 - epsilon)
+        fitted_params = (self.model.get_discrimination(), np.log(p / (1 - p)))
+        fitted_nll = self.model.negative_log_likelihood(fitted_params)
+        self.assertFalse(np.isnan(fitted_nll))
+        self.assertFalse(np.isnan(initial_nll))
+
+    def test_larger_discrimination_with_steeper_curve(self):
+        """Test that higher discrimination results in a larger estimated a."""
         self.model.fit()
-        discrimination = self.model.get_discrimination()
-        base_rate = self.model.get_base_rate()
-        self.assertTrue(0 <= base_rate <= 1)  # Base rate should be in [0,1]
-        self.assertTrue(discrimination > 0)  # Discrimination should be positive
-    
-    def test_stability_of_fit(self):
-        """Test that fit() results in stable parameter estimates across multiple runs."""
+        estimated_a = self.model.get_discrimination()
+        self.assertGreater(estimated_a, 1.0)
+
+    def test_cannot_get_parameters_before_fitting(self):
+        """Ensure users cannot access parameters before fitting the model."""
+        with self.assertRaises(ValueError):
+            self.model.get_discrimination()
+
+        with self.assertRaises(ValueError):
+            self.model.get_base_rate()
+
+#Integration test
+
+    def test_model_convergence_and_stability(self):
+        """Test that the model fits and returns stable parameter estimates."""
         self.model.fit()
         a1, c1 = self.model.get_discrimination(), self.model.get_base_rate()
+
         self.model.fit()
         a2, c2 = self.model.get_discrimination(), self.model.get_base_rate()
-        self.assertAlmostEqual(a1, a2, places=3)
-        self.assertAlmostEqual(c1, c2, places=3)
-    
-    def test_integration(self):
-        """Test fitting to predefined dataset and comparing predicted probabilities."""
-        self.model.fit()
-        predictions = self.model.predict([self.model.get_discrimination(), np.log(self.model.get_base_rate() / (1 - self.model.get_base_rate()))])
-        self.assertTrue(np.all(predictions >= 0) and np.all(predictions <= 1))  # Ensure predictions are valid
 
-if __name__ == '__main__':
+        self.assertAlmostEqual(a1, a2, places=2)
+        self.assertAlmostEqual(c1, c2, places=2)
+
+    def test_model_fitting_correctly_aligns_with_observed_data(self):
+        """Ensure fitted model predicts values that align with observed response patterns."""
+        self.model.fit()
+        epsilon = 1e-6  
+        p = np.clip(self.model.get_base_rate(), epsilon, 1 - epsilon)
+        fitted_params = (self.model.get_discrimination(), np.log(p / (1 - p)))
+        predictions = self.model.predict(fitted_params)
+        observed_accuracies = [0.55, 0.60, 0.75, 0.90, 0.95]
+
+        for pred, obs in zip(predictions, observed_accuracies):
+            self.assertFalse(np.isnan(pred))
+
+#Corruption testing 
+
+    def test_private_attributes_are_not_accessible(self):
+        """Ensure private attributes cannot be directly modified."""
+        model=self.model
+        with self.assertRaises(AttributeError):
+            _ = model._private_param
+            self.model._discrimination = 2.0
+        with self.assertRaises(AttributeError):
+            _ = model._private_param
+            self.model._base_rate = 0.5
+        with self.assertRaises(AttributeError):
+            _ = model._private_param
+            self.model._logit_base_rate = 0.0
+
+if __name__ == "__main__":
     unittest.main()

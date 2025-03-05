@@ -1,2 +1,1 @@
-export PYTHONPATH=$(pwd)/..
-python3 -m unittest discover -s ../tests -p "test_*.py"
+PYTHONPATH=src python3 -m unittest discover tests #gpt recommended fix for imports error
