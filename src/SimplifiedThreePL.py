@@ -8,6 +8,10 @@ class SimplifiedThreePL:
         if not experiment.conditions:
             raise ValueError("experiment must contain at least one sdt condition")
         self.experiment=experiment
+        self._base_rate=None
+        self._logit_base_rate=None
+        self._discrimination=None
+        self._is_fitted=False
 
     def summary(self):
         n_correct=sum(sdt.hits for sdt, _ in self.experiment.conditions)
@@ -19,4 +23,4 @@ class SimplifiedThreePL:
             "n_conditions": len(self.experiment.conditions)
         }
     
-    def predict(self):
+    def predict(self, parameters):
